@@ -1,0 +1,5 @@
+{
+  "name": "QuickReceipt",
+  "description": "A mobile-responsive receipt generator allowing users to manage company settings, track items, and export receipts to PDF or WhatsApp.",
+  "requestFramePermissions": []
+}
