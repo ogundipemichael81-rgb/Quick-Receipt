@@ -32,7 +32,8 @@ const App: React.FC = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  const receiptRef = useRef<HTMLDivElement>(null);
+  // Dedicated ref for the off-screen receipt used for PDF generation
+  const printRef = useRef<HTMLDivElement>(null);
 
   // --- Derived State ---
   const totalAmount = useMemo(() => {
@@ -47,17 +48,23 @@ const App: React.FC = () => {
   };
 
   const generatePDF = async (): Promise<File | null> => {
-    if (!receiptRef.current) return null;
+    if (!printRef.current) {
+        console.error("Print ref not found");
+        return null;
+    }
     setIsGenerating(true);
 
     try {
-      // Small delay to ensure rendering if hidden
+      // Small delay to ensure rendering updates
       await new Promise(resolve => setTimeout(resolve, 100));
 
-      const canvas = await html2canvas(receiptRef.current, {
+      const canvas = await html2canvas(printRef.current, {
         scale: 2, // Higher quality
         useCORS: true, // Handle external images if any
         backgroundColor: '#ffffff',
+        logging: false,
+        // Ensure we capture even if it's off-screen
+        windowWidth: 1200, 
       });
 
       const imgData = canvas.toDataURL('image/png');
@@ -74,7 +81,7 @@ const App: React.FC = () => {
 
       pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
       
-      const fileName = `Receipt-${transaction.customerName.replace(/\s+/g, '-')}-${transaction.date}.pdf`;
+      const fileName = `Receipt-${(transaction.customerName || 'Customer').replace(/\s+/g, '-')}-${transaction.date}.pdf`;
       pdf.save(fileName);
 
       setIsGenerating(false);
@@ -112,7 +119,7 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900 font-sans md:overflow-hidden">
+    <div className="min-h-screen bg-gray-50 text-gray-900 font-sans md:overflow-hidden relative">
       
       {/* Toast Notification */}
       {toastMessage && (
@@ -172,8 +179,8 @@ const App: React.FC = () => {
         {/* Right: Preview (Desktop) */}
         <div className="hidden md:block bg-gray-200/50 border-l border-gray-200 h-full overflow-hidden relative">
             <div className="absolute inset-0 overflow-y-auto p-8 flex justify-center">
+                 {/* Visual only, no ref attached */}
                  <ReceiptPreview 
-                    ref={receiptRef}
                     settings={settings}
                     transaction={transaction}
                     items={items}
@@ -211,21 +218,9 @@ const App: React.FC = () => {
 
             {/* Scrollable Preview Area */}
             <div className="flex-1 overflow-y-auto p-4 flex justify-center bg-gray-100/10">
-                 {/* 
-                   We render the exact same component. 
-                   Since ref logic needs the component to be mounted, this works perfectly. 
-                   However, for PDF generation to work on mobile, we need to ensure we capture *this* specific instance or the hidden desktop one. 
-                   Since React refs update on mount, if we use the same ref, it might jump. 
-                   Strategy: We will use a separate ref for the mobile view or just reuse the component but rely on the fact that if the modal is open, we want to print *this* one.
-                   Actually, let's keep it simple: We use the same `ReceiptPreview` component. 
-                   The `receiptRef` is attached to the desktop view which is hidden on mobile via CSS `hidden`.
-                   `html2canvas` often struggles with `display: none`.
-                   
-                   FIX: On mobile, we will render the ReceiptPreview inside the modal and attach the ref THERE if mobile view is active.
-                 */}
-                 <div className={showPreviewMobile ? 'block' : 'hidden'}>
+                 {/* Visual only, no ref attached */}
+                 <div className="block">
                      <ReceiptPreview 
-                        ref={showPreviewMobile ? receiptRef : null}
                         settings={settings}
                         transaction={transaction}
                         items={items}
@@ -257,26 +252,14 @@ const App: React.FC = () => {
       )}
       
       {/* 
-        Technical Workaround for PDF Generation on Mobile if Modal isn't open:
-        If we are on desktop, the ref is in the right panel. 
-        If we are on mobile and the modal is CLOSED, the ref is technically nowhere if we conditionally render based on media queries in JSX.
-        However, in the JSX above:
-        Desktop: <div className="hidden md:block">... <ReceiptPreview ref={receiptRef} /> ...</div>
-        
-        If we are on mobile, that div is `display: none` via Tailwind. html2canvas fails on display:none.
-        So we need a hidden off-screen container that is always "rendered" but visually hidden, OR we force the modal open logic.
-        
-        Simpler approach implemented here: 
-        The Mobile Modal attaches the ref when open. The user MUST open preview to download on mobile.
-        For Desktop, the right panel is visible.
-        
-        To support "Desktop view hidden on mobile" issue:
-        We will render a dedicated hidden container for PDF generation that is absolutely positioned off-screen but visible to the DOM, 
-        so we don't rely on the UI state for generation source.
+        Dedicated Hidden Container for PDF Generation
+        - Always rendered (conditionally rendering refs causes issues)
+        - Positioned off-screen (left: -9999px) instead of visibility:hidden or display:none
+          to ensure html2canvas can capture it.
       */}
-      <div className="absolute top-0 left-[-9999px] invisible">
+      <div style={{ position: 'fixed', left: '-9999px', top: 0 }}>
            <ReceiptPreview 
-                ref={!showPreviewMobile ? receiptRef : null} // Attach ref here if mobile modal is closed, so we can still generate if needed (though UI prevents it)
+                ref={printRef}
                 settings={settings}
                 transaction={transaction}
                 items={items}

@@ -115,9 +115,6 @@ const ReceiptPreview = forwardRef<HTMLDivElement, ReceiptPreviewProps>(
                         <span>TOTAL</span>
                         <span>{formatCurrency(total)}</span>
                     </div>
-                    <div className="text-xs text-gray-400 mt-1 text-center uppercase tracking-wide">
-                        Inclusive of Tax
-                    </div>
                 </div>
 
                 {/* Footer */}
